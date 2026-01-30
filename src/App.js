@@ -341,11 +341,21 @@ const AIDocumentAnalysis = () => {
       // Show user that we're waking up the server
       console.log('Initiating login - waking up server if needed...');
       
+      // Determine API URL dynamically (same logic as OAuth callback)
+      const getApiUrl = () => {
+        if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+        if (window.location.hostname.includes('vercel.app') || window.location.hostname !== 'localhost') {
+          return process.env.REACT_APP_API_URL || 'https://policy-chatbot-backend-mnwj.onrender.com';
+        }
+        return 'http://localhost:8000';
+      };
+      const apiUrl = getApiUrl();
+      
       // Use a longer timeout since Render free tier can take 50+ seconds to wake up
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 second timeout
       
-      const response = await fetch(`${API_BASE_URL}/api/auth/login-url`, {
+      const response = await fetch(`${apiUrl}/api/auth/login-url`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
