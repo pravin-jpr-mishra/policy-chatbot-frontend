@@ -100,53 +100,68 @@ class APIService {
     return await this.request(`/api/documents${params}`);
   }
 
-  async uploadDocument(file, owner = null) {
+  // Upload document with extended timeout for free hosting
+  async uploadDocument(file, userEmail, onProgress = null) {
     const formData = new FormData();
     formData.append('file', file);
 
-    let url = `${API_BASE_URL}/api/documents/upload`;
-    if (owner) {
-      url += `?owner=${encodeURIComponent(owner)}`;
+    // Validate file size (max 50MB)
+    const maxSize = 50 * 1024 * 1024;
+    if (file.size > maxSize) {
+      throw new Error(`File too large. Maximum size is 50MB, your file is ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
     }
-    
-    const headers = {};
-    if (this.sessionToken) {
-      headers['Authorization'] = `Bearer ${this.sessionToken}`;
-    }
-    
-    console.log(`Uploading ${file.name} to ${url} for user: ${owner}`);
-    
+
     try {
-      // Add timeout for document processing
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        console.log('Upload/processing timeout - aborting request');
-        controller.abort();
-      }, 120000); // 2 minutes timeout for processing
+      // Use XMLHttpRequest for progress tracking and longer timeout
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        
+        // 5 minute timeout for upload + processing (Render free tier is slow)
+        xhr.timeout = 300000; // 5 minutes
+        
+        xhr.upload.addEventListener('progress', (event) => {
+          if (event.lengthComputable && onProgress) {
+            const progress = Math.round((event.loaded / event.total) * 100);
+            onProgress(progress);
+          }
+        });
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: formData,
-        signal: controller.signal,
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const response = JSON.parse(xhr.responseText);
+              resolve(response);
+            } catch (e) {
+              resolve({ success: true, message: 'Document uploaded successfully' });
+            }
+          } else {
+            reject(new Error(`Upload failed with status ${xhr.status}: ${xhr.responseText}`));
+          }
+        });
+
+        xhr.addEventListener('error', () => {
+          reject(new Error('Network error during upload. Server might be waking up - please try again.'));
+        });
+
+        xhr.addEventListener('timeout', () => {
+          reject(new Error('Upload timed out. The server might be processing a large file or waking up. Please try again.'));
+        });
+
+        xhr.addEventListener('abort', () => {
+          reject(new Error('Upload was cancelled'));
+        });
+
+        xhr.open('POST', `${this.baseURL}/api/documents/upload?owner=${encodeURIComponent(userEmail)}`);
+        
+        // Add auth token if available
+        const token = localStorage.getItem('session_token');
+        if (token) {
+          xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        }
+        
+        xhr.send(formData);
       });
-
-      clearTimeout(timeoutId);
-      console.log(`Upload response status: ${response.status}`);
-      
-      if (!response.ok) {
-        const error = await response.json();
-        console.error('Upload error:', error);
-        throw new Error(error.detail || 'Upload failed');
-      }
-
-      const result = await response.json();
-      console.log('Upload result:', result);
-      return result;
     } catch (error) {
-      if (error.name === 'AbortError') {
-        throw new Error('Upload timed out during processing. Please try again.');
-      }
       console.error('Upload error:', error);
       throw error;
     }
