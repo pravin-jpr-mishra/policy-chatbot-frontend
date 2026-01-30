@@ -274,7 +274,7 @@ const AIDocumentAnalysis = () => {
         const getApiUrl = () => {
           if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
           if (window.location.hostname.includes('vercel.app') || window.location.hostname !== 'localhost') {
-            return process.env.REACT_APP_API_URL || 'https://policy-chatbot-backend.onrender.com';
+            return process.env.REACT_APP_API_URL || 'https://policy-chatbot-backend-mnwj.onrender.com';
           }
           return 'http://localhost:8000';
         };
