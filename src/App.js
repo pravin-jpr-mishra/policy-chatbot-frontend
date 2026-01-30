@@ -205,29 +205,31 @@ const AIDocumentAnalysis = () => {
   // Load session and documents on mount
   useEffect(() => {
     const initAuth = async () => {
-      // First check if we have an OAuth callback
-      const params = new URLSearchParams(window.location.search);
-      const code = params.get('code');
-      
-      // Check if we already processed this code (prevents double calls in React StrictMode)
-      const processedCode = sessionStorage.getItem('processed_auth_code');
-      
-      if (code && code !== processedCode) {
-        // Mark this code as being processed
-        sessionStorage.setItem('processed_auth_code', code);
-        // Handle OAuth callback
-        await handleOAuthCallback();
-        // Done checking auth state
-        setIsAuthenticating(false);
-      } else if (code && code === processedCode) {
-        // Code was already processed, just check session and clear URL
-        window.history.replaceState({}, document.title, window.location.pathname);
-        await checkSession();
-        setIsAuthenticating(false);
-      } else {
-        // No code in URL, check for existing session
-        await checkSession();
-        // Done checking auth state
+      try {
+        // First check if we have an OAuth callback
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('code');
+        
+        // Check if we already processed this code (prevents double calls in React StrictMode)
+        const processedCode = sessionStorage.getItem('processed_auth_code');
+        
+        if (code && code !== processedCode) {
+          // Mark this code as being processed
+          sessionStorage.setItem('processed_auth_code', code);
+          // Handle OAuth callback
+          await handleOAuthCallback();
+        } else if (code && code === processedCode) {
+          // Code was already processed, just check session and clear URL
+          window.history.replaceState({}, document.title, window.location.pathname);
+          await checkSession();
+        } else {
+          // No code in URL, check for existing session
+          await checkSession();
+        }
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+      } finally {
+        // Always stop the authenticating spinner
         setIsAuthenticating(false);
       }
     };
