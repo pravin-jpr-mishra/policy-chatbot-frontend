@@ -16,7 +16,7 @@ const getApiBaseUrl = () => {
       window.location.hostname !== 'localhost') {
     // Use the production backend URL (Render.com)
     // This should be set via REACT_APP_API_URL, but fallback for safety
-    return process.env.REACT_APP_API_URL || 'https://policy-chatbot-backend.onrender.com';
+    return process.env.REACT_APP_API_URL || 'https://policy-chatbot-backend-mnwj.onrender.com';
   }
   
   // Default to localhost for development
