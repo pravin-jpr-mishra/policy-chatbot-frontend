@@ -29,16 +29,13 @@ const AIDocumentAnalysis = () => {
     return 'cosmic';
   });
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  // Check for OAuth code in URL immediately to prevent login flash
   const [isAuthenticating, setIsAuthenticating] = useState(() => {
     // If there's an OAuth code in the URL or a session token exists, start in authenticating state
     const hasOAuthCode = window.location.search.includes('code=');
     const hasSessionToken = !!localStorage.getItem('sessionToken');
     return hasOAuthCode || hasSessionToken;
   });
-  
-  const [loginLoading, setLoginLoading] = useState(false);
-  const [error, setError] = useState(null);
-  
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     // Auto-collapse sidebar on mobile
     return window.innerWidth < 768;
@@ -208,31 +205,29 @@ const AIDocumentAnalysis = () => {
   // Load session and documents on mount
   useEffect(() => {
     const initAuth = async () => {
-      try {
-        // First check if we have an OAuth callback
-        const params = new URLSearchParams(window.location.search);
-        const code = params.get('code');
-        
-        // Check if we already processed this code (prevents double calls in React StrictMode)
-        const processedCode = sessionStorage.getItem('processed_auth_code');
-        
-        if (code && code !== processedCode) {
-          // Mark this code as being processed
-          sessionStorage.setItem('processed_auth_code', code);
-          // Handle OAuth callback
-          await handleOAuthCallback();
-        } else if (code && code === processedCode) {
-          // Code was already processed, just check session and clear URL
-          window.history.replaceState({}, document.title, window.location.pathname);
-          await checkSession();
-        } else {
-          // No code in URL, check for existing session
-          await checkSession();
-        }
-      } catch (error) {
-        console.error('Auth initialization error:', error);
-      } finally {
-        // Always stop the authenticating spinner
+      // First check if we have an OAuth callback
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      
+      // Check if we already processed this code (prevents double calls in React StrictMode)
+      const processedCode = sessionStorage.getItem('processed_auth_code');
+      
+      if (code && code !== processedCode) {
+        // Mark this code as being processed
+        sessionStorage.setItem('processed_auth_code', code);
+        // Handle OAuth callback
+        await handleOAuthCallback();
+        // Done checking auth state
+        setIsAuthenticating(false);
+      } else if (code && code === processedCode) {
+        // Code was already processed, just check session and clear URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+        await checkSession();
+        setIsAuthenticating(false);
+      } else {
+        // No code in URL, check for existing session
+        await checkSession();
+        // Done checking auth state
         setIsAuthenticating(false);
       }
     };
@@ -334,58 +329,12 @@ const AIDocumentAnalysis = () => {
   };
 
   const handleLogin = async () => {
-    setLoginLoading(true);
-    setError(null);
-    
     try {
-      // Show user that we're waking up the server
-      console.log('Initiating login - waking up server if needed...');
-      
-      // Determine API URL dynamically (same logic as OAuth callback)
-      const getApiUrl = () => {
-        if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
-        if (window.location.hostname.includes('vercel.app') || window.location.hostname !== 'localhost') {
-          return process.env.REACT_APP_API_URL || 'https://policy-chatbot-backend-mnwj.onrender.com';
-        }
-        return 'http://localhost:8000';
-      };
-      const apiUrl = getApiUrl();
-      
-      // Use a longer timeout since Render free tier can take 50+ seconds to wake up
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 second timeout
-      
-      const response = await fetch(`${apiUrl}/api/auth/login-url`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        signal: controller.signal,
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (data.login_url) {
-        console.log('Redirecting to Microsoft login...');
-        window.location.href = data.login_url;
-      } else {
-        throw new Error('No login URL received from server');
-      }
+      const response = await API.getLoginUrl();
+      // Redirect to Microsoft login
+      window.location.href = response.login_url;
     } catch (error) {
-      console.error('Login error:', error);
-      if (error.name === 'AbortError') {
-        setError('Server is waking up. This can take up to 60 seconds on free hosting. Please try again.');
-      } else {
-        setError(`Login failed: ${error.message}. The server might be starting up, please wait and try again.`);
-      }
-    } finally {
-      setLoginLoading(false);
+      console.error('Login failed:', error);
     }
   };
 
@@ -906,46 +855,54 @@ const AIDocumentAnalysis = () => {
     return (
       <div className={`min-h-screen ${backgrounds[bgStyle]} relative overflow-hidden flex items-center justify-center p-4`}>
         <BackgroundElements />
-        
-        <div className="text-center z-10">
-          <h1 className="text-5xl font-bold text-white mb-8 tracking-tight">
+
+        {/* Background selector */}
+        {/* <div className="absolute top-6 right-6 z-20 flex gap-2">
+          {Object.keys(backgrounds).map((bg) => (
+            <button
+              key={bg}
+              onClick={() => setBgStyle(bg)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                bgStyle === bg
+                  ? 'bg-white/20 text-white border border-white/30'
+                  : 'bg-white/5 text-white/70 border border-white/10 hover:bg-white/10'
+              }`}
+            >
+              {bg.charAt(0).toUpperCase() + bg.slice(1)}
+            </button>
+          ))}
+        </div> */}
+
+        {/* Login Content */}
+        <div className="relative z-10 text-center">
+          <h1 className="text-5xl md:text-6xl font-bold text-white mb-16 tracking-tight">
             HR Policy Chatbot
           </h1>
-          
-          <button
-            onClick={handleLogin}
-            disabled={loginLoading}
-            className={`flex items-center gap-3 px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-300 mx-auto ${
-              loginLoading 
-                ? 'bg-blue-500 cursor-wait' 
-                : 'bg-blue-600 hover:bg-blue-700 hover:scale-105 hover:shadow-xl'
-            } text-white shadow-lg`}
-          >
-            {loginLoading ? (
-              <>
-                <svg className="animate-spin h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span>Connecting to server...</span>
-              </>
-            ) : (
-              <>
-                <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zm12.6 0H12.6V0H24v11.4z"/>
-                </svg>
-                <span>Login with Microsoft</span>
-              </>
-            )}
-          </button>
 
-          {/* Error message */}
-          {error && (
-            <div className="mt-6 p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 max-w-md mx-auto">
-              {error}
+          <button 
+            onClick={handleLogin}
+            className="group relative px-8 py-4 bg-blue-600/80 hover:bg-blue-600 text-white rounded-2xl font-medium text-lg transition-all duration-300 shadow-lg hover:shadow-blue-500/50 hover:scale-105 border border-blue-400/30"
+          >
+            <div className="flex items-center gap-3">
+              {/* Microsoft Logo */}
+              <div className="grid grid-cols-2 gap-0.5 w-6 h-6">
+                <div className="bg-red-500 rounded-sm"></div>
+                <div className="bg-green-500 rounded-sm"></div>
+                <div className="bg-blue-400 rounded-sm"></div>
+                <div className="bg-yellow-400 rounded-sm"></div>
+              </div>
+              <span>Login with Microsoft</span>
             </div>
-          )}
+            <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-blue-400/0 via-blue-400/30 to-blue-400/0 opacity-0 group-hover:opacity-100 transition-opacity blur-xl"></div>
+          </button>
         </div>
+
+        <style jsx>{`
+          @keyframes twinkle {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+          }
+        `}</style>
       </div>
     );
   }
@@ -956,7 +913,7 @@ const AIDocumentAnalysis = () => {
       <BackgroundElements />
 
       {/* Background selector */}
-      {/* <div className="absolute top-6 right-6 z-20 flex gap-2">
+      {/* <div className="absolute top-6 right-6 z-30 flex gap-2">
         {Object.keys(backgrounds).map((bg) => (
           <button
             key={bg}
