@@ -44,10 +44,17 @@ class APIService {
     }
 
     try {
+      // Add timeout for requests (60 seconds - Render free tier can be slow to wake up)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+      
       const response = await fetch(url, {
         ...options,
         headers,
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const error = await response.json();
@@ -56,6 +63,10 @@ class APIService {
 
       return await response.json();
     } catch (error) {
+      if (error.name === 'AbortError') {
+        console.error(`API Timeout (${endpoint}): Request took too long`);
+        throw new Error('Server is waking up. Please try again in a moment.');
+      }
       console.error(`API Error (${endpoint}):`, error);
       throw error;
     }
