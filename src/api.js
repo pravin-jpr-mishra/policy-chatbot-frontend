@@ -105,23 +105,40 @@ class APIService {
     
     console.log(`Uploading ${file.name} to ${url} for user: ${owner}`);
     
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: formData,
-    });
+    try {
+      // Add timeout for document processing
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        console.log('Upload/processing timeout - aborting request');
+        controller.abort();
+      }, 120000); // 2 minutes timeout for processing
 
-    console.log(`Upload response status: ${response.status}`);
-    
-    if (!response.ok) {
-      const error = await response.json();
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: formData,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      console.log(`Upload response status: ${response.status}`);
+      
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Upload error:', error);
+        throw new Error(error.detail || 'Upload failed');
+      }
+
+      const result = await response.json();
+      console.log('Upload result:', result);
+      return result;
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        throw new Error('Upload timed out during processing. Please try again.');
+      }
       console.error('Upload error:', error);
-      throw new Error(error.detail || 'Upload failed');
+      throw error;
     }
-
-    const result = await response.json();
-    console.log('Upload result:', result);
-    return result;
   }
 
   async toggleDocument(name, active, owner = null) {
